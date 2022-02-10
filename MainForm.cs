@@ -7,38 +7,39 @@ namespace MineScreenShots
 {
     public partial class MainForm : Form
     {
-        private Settings _Settings;
-        private static readonly string dataPath = string.Format("{0}/MineScreenShots/", Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
-        private static readonly string settingsPath = dataPath + "config.json";
-        private readonly Dictionary<string, FileSystemWatcher> watchers = new();
-        private readonly Dictionary<string, ListViewGroup> groups = new();
+        private Settings _settings;
+        private static readonly string DataPath =
+            $"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}/MineScreenShots/";
+        private static readonly string SettingsPath = DataPath + "config.json";
+        private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
+        private readonly Dictionary<string, ListViewGroup> _groups = new();
         public MainForm()
         {
             InitializeComponent();
             Application.EnableVisualStyles();
-            Directory.CreateDirectory(dataPath);
+            Directory.CreateDirectory(DataPath);
             CheckForIllegalCrossThreadCalls = false;
             PicList.LargeImageList = imageList;
-            if (File.Exists(settingsPath)) _Settings = JsonMapper.ToObject<Settings>(File.ReadAllText(settingsPath));
-            else _Settings = new Settings
+            if (File.Exists(SettingsPath)) _settings = JsonMapper.ToObject<Settings>(File.ReadAllText(SettingsPath));
+            else _settings = new Settings
             {
-                WatchAndCopy = false,
+                WatchAndCopy = false, 
                 HideWhenStart = false
             };
-            if (_Settings.HideWhenStart) WindowState = FormWindowState.Minimized;
+            if (_settings.HideWhenStart) WindowState = FormWindowState.Minimized;
         }
-        public ImageList imageList = new()
+        private ImageList imageList = new()
         {
-            ImageSize = new Size(384, 256),
+            ImageSize = new Size(256, 144),
             ColorDepth = ColorDepth.Depth32Bit
         };
         private void MineScreenShots_Load(object sender, EventArgs e)
         {
-            string minecraft =
-                _Settings.CustomMinecraftDir ?
-                _Settings.MinecraftDir :
+            var minecraft =
+                _settings.CustomMinecraftDir ?
+                _settings.MinecraftDir :
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\.minecraft\";
-            string screenshots = minecraft + @"screenshots\";
+            var screenshots = minecraft + @"screenshots\";
             var defaultGroup = DirList.Groups.Add("default", "默认路径");
             var mainPath = new ScreenshotsPath
             {
@@ -48,7 +49,7 @@ namespace MineScreenShots
             };
             AddPath(mainPath, defaultGroup);
             DirectoryInfo versionsDir = new(minecraft + @"\versions\");
-            DirectoryInfo[] versions = versionsDir.Exists ? versionsDir.GetDirectories() : new DirectoryInfo[0];
+            var versions = versionsDir.Exists ? versionsDir.GetDirectories() : Array.Empty<DirectoryInfo>();
             foreach (var version in versions)
             {
                 AddPath(new ScreenshotsPath
@@ -67,10 +68,10 @@ namespace MineScreenShots
             watcher.EnableRaisingEvents = true;
             watcher.Created += Watcher_Created;
             watcher.Deleted += Watcher_Deleted;
-            watchers.Add(path.Path.FullName, watcher);
+            _watchers.Add(path.Path.FullName, watcher);
             DirList.Items.Add(path).Group = group;
             var picGroup = PicList.Groups.Add(path.Path.FullName, path.Name);
-            groups.Add(path.Path.FullName, picGroup);
+            _groups.Add(path.Path.FullName, picGroup);
             if (!path.Path.Exists) return;
             var pics = path.Path.GetFiles();
             foreach (var pic in pics)
@@ -110,7 +111,7 @@ namespace MineScreenShots
         private void DeleteScreenshots()
         {
             if (PicList.SelectedItems.Count == 0) return;
-            var result = MessageBox.Show(string.Format("要删除这{0}张图片吗？", PicList.SelectedItems.Count), "删除", MessageBoxButtons.YesNo);
+            var result = MessageBox.Show($"要删除这{PicList.SelectedItems.Count}张图片吗？", "删除", MessageBoxButtons.YesNo);
             if (result == DialogResult.Yes)
             {
                 foreach (Screenshot item in PicList.SelectedItems)
@@ -143,27 +144,25 @@ namespace MineScreenShots
             var file = new FileInfo(e.FullPath);
             if (file.Exists)
                 PicList.Items[file.FullName].Remove();
-            imageList.Images[file.FullName].Dispose();
+            imageList.Images[file.FullName]?.Dispose();
         }
 
         private void Watcher_Created(object sender, FileSystemEventArgs e)
         {
             Thread.Sleep(2000); // 等待文件写入完成
             var file = new FileInfo(e.FullPath);
-            string path = file.FullName.Remove(file.FullName.IndexOf(file.Name));
-            AddFile(file, groups[path]);
-            if (_Settings.WatchAndCopy)
+            var path = file.FullName.Remove(file.FullName.IndexOf(file.Name, StringComparison.Ordinal));
+            AddFile(file, _groups[path]);
+            if (!_settings.WatchAndCopy) return;
+            Thread thread = new(() =>
             {
-                Thread thread = new(new ThreadStart(() =>
+                CopyScreenshot(new Screenshot
                 {
-                    CopyScreenshot(new Screenshot
-                    {
-                        File = file,
-                    }, true);
-                }));
-                thread.SetApartmentState(ApartmentState.STA);
-                thread.Start();
-            }
+                    File = file,
+                }, true);
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
 
         }
 
@@ -213,10 +212,10 @@ namespace MineScreenShots
 
         private void Settings_Click(object sender, EventArgs e)
         {
-            SettingsForm form = new(_Settings);
+            SettingsForm form = new(_settings);
             var result = form.ShowDialog();
-            if (result == DialogResult.OK) _Settings = form.Settings;
-            File.WriteAllText(settingsPath, JsonMapper.ToJson(_Settings));
+            if (result == DialogResult.OK) _settings = form.Settings;
+            File.WriteAllText(SettingsPath, JsonMapper.ToJson(_settings));
         }
 
         private void PicList_KeyDown(object sender, KeyEventArgs e)
@@ -234,14 +233,14 @@ namespace MineScreenShots
     public class Screenshot : ListViewItem
     {
         public new string Name { get => Text; set => Text = value; }
-        public FileInfo File { get; set; }
+        public FileInfo File { get; init; }
     }
 
     public class ScreenshotsPath : ListViewItem
     {
-        public new string Name { get => Text; set => Text = value; }
+        public new string Name { get => Text; init => Text = value; }
         public DirectoryInfo Path { get; init; }
-        public bool Removable { get; set; }
+        public bool Removable { get; init; }
     }
 
     public struct Settings
