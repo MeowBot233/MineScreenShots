@@ -10,7 +10,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>full</DebugType>
     <Authors>坊洛</Authors>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
